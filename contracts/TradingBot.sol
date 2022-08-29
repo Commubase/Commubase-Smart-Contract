@@ -179,3 +179,168 @@ contract IOneSplit { // interface for 1inch exchange.
     ) public payable;
 }
 
+
+contract TradingBot is DyDxFlashLoan { 
+    uint256 public loan;
+
+    // Addresses
+    address payable OWNER;
+
+    // OneSplit Config
+    address ONE_SPLIT_ADDRESS = 0xC586BeF4a0992C495Cf22e1aeEE4E446CECDee0E;
+    uint256 PARTS = 10;
+    uint256 FLAGS = 0;
+
+    // ZRX Config
+    address ZRX_EXCHANGE_ADDRESS = 0x61935CbDd02287B511119DDb11Aeb42F1593b7Ef;
+    address ZRX_ERC20_PROXY_ADDRESS = 0x95E6F48254609A6ee006F7D493c8e5fB97094ceF;
+    address ZRX_STAKING_PROXY = 0xa26e80e7Dea86279c6d778D702Cc413E6CFfA777; // Fee collector
+
+    // Modifiers
+    modifier onlyOwner() {
+        require(msg.sender == OWNER, "caller is not the owner!");
+        _;
+    }
+
+    // Allow the contract to receive Ether
+    function () external payable  {}
+
+    constructor() public payable {
+        _getWeth(msg.value);
+        _approveWeth(msg.value);
+        OWNER = msg.sender;
+    }
+
+    function getFlashloan(address flashToken, uint256 flashAmount, address arbToken, bytes calldata zrxData, uint256 oneSplitMinReturn, uint256[] calldata oneSplitDistribution) external payable onlyOwner {
+        uint256 balanceBefore = IERC20(flashToken).balanceOf(address(this));
+        bytes memory data = abi.encode(flashToken, flashAmount, balanceBefore, arbToken, zrxData, oneSplitMinReturn, oneSplitDistribution);
+        flashloan(flashToken, flashAmount, data); // execution goes to `callFunction`
+
+        // and this point we have succefully paid the dept
+    }
+
+    function callFunction(
+        address, /* sender */
+        Info calldata, /* accountInfo */
+        bytes calldata data
+    ) external onlyPool {
+        (address flashToken, uint256 flashAmount, uint256 balanceBefore, address arbToken, bytes memory zrxData, uint256 oneSplitMinReturn, uint256[] memory oneSplitDistribution) = abi
+            .decode(data, (address, uint256, uint256, address, bytes, uint256, uint256[]));
+        uint256 balanceAfter = IERC20(flashToken).balanceOf(address(this));
+        require(
+            balanceAfter - balanceBefore == flashAmount,
+            "contract did not get the loan"
+        );
+        loan = balanceAfter;
+
+        // do whatever you want with the money
+        // the dept will be automatically withdrawn from this contract at the end of execution
+        _arb(flashToken, arbToken, flashAmount, zrxData, oneSplitMinReturn, oneSplitDistribution);
+    }
+
+    function arb(address _fromToken, address _toToken, uint256 _fromAmount, bytes memory _0xData, uint256 _1SplitMinReturn, uint256[] memory _1SplitDistribution) onlyOwner payable public {
+        _arb(_fromToken, _toToken, _fromAmount, _0xData, _1SplitMinReturn, _1SplitDistribution);
+    }
+
+    function _arb(address _fromToken, address _toToken, uint256 _fromAmount, bytes memory _0xData, uint256 _1SplitMinReturn, uint256[] memory _1SplitDistribution) internal {
+        // Track original balance
+        uint256 _startBalance = IERC20(_fromToken).balanceOf(address(this));
+
+        // Perform the arb trade
+        _trade(_fromToken, _toToken, _fromAmount, _0xData, _1SplitMinReturn, _1SplitDistribution);
+
+        // Track result balance
+        uint256 _endBalance = IERC20(_fromToken).balanceOf(address(this));
+
+        // Require that arbitrage is profitable
+        require(_endBalance > _startBalance, "End balance must exceed start balance.");
+    }
+
+    function trade(address _fromToken, address _toToken, uint256 _fromAmount, bytes memory _0xData, uint256 _1SplitMinReturn, uint256[] memory _1SplitDistribution) onlyOwner payable public {
+        _trade(_fromToken, _toToken, _fromAmount, _0xData, _1SplitMinReturn, _1SplitDistribution);
+    }
+
+    function _trade(address _fromToken, address _toToken, uint256 _fromAmount, bytes memory _0xData, uint256 _1SplitMinReturn, uint256[] memory _1SplitDistribution) internal {
+        // Track the balance of the token RECEIVED from the trade
+        uint256 _beforeBalance = IERC20(_toToken).balanceOf(address(this));
+
+        // Swap on 0x: give _fromToken, receive _toToken
+        _zrxSwap(_fromToken, _fromAmount, _0xData);
+
+        // Calculate the how much of the token we received
+        uint256 _afterBalance = IERC20(_toToken).balanceOf(address(this));
+
+        // Read _toToken balance after swap
+        uint256 _toAmount = _afterBalance - _beforeBalance;
+
+        // Swap on 1Split: give _toToken, receive _fromToken
+        _oneSplitSwap(_toToken, _fromToken, _toAmount, _1SplitMinReturn, _1SplitDistribution);
+    }
+
+    function zrxSwap(address _from, uint256 _amount, bytes memory _calldataHexString) onlyOwner public payable {
+        _zrxSwap(_from, _amount, _calldataHexString);
+    }
+
+    function _zrxSwap(address _from, uint256 _amount, bytes memory _calldataHexString) internal {
+        // Approve tokens
+        IERC20 _fromIERC20 = IERC20(_from);
+        _fromIERC20.approve(ZRX_ERC20_PROXY_ADDRESS, _amount);
+
+        // Swap tokens
+        address(ZRX_EXCHANGE_ADDRESS).call.value(msg.value)(_calldataHexString);
+
+        // Reset approval
+        _fromIERC20.approve(ZRX_ERC20_PROXY_ADDRESS, 0);
+    }
+
+    function oneSplitSwap(address _from, address _to, uint256 _amount, uint256 _minReturn, uint256[] memory _distribution) onlyOwner public payable {
+        _oneSplitSwap(_from, _to, _amount, _minReturn, _distribution);
+    }
+
+    function _oneSplitSwap(address _from, address _to, uint256 _amount, uint256 _minReturn, uint256[] memory _distribution) internal {
+        // Setup contracts
+        IERC20 _fromIERC20 = IERC20(_from);
+        IERC20 _toIERC20 = IERC20(_to);
+        IOneSplit _oneSplitContract = IOneSplit(ONE_SPLIT_ADDRESS);
+
+        // Approve tokens
+        _fromIERC20.approve(ONE_SPLIT_ADDRESS, _amount);
+
+        // Swap tokens: give _from, get _to
+        _oneSplitContract.swap(_fromIERC20, _toIERC20, _amount, _minReturn, _distribution, FLAGS);
+
+        // Reset approval
+        _fromIERC20.approve(ONE_SPLIT_ADDRESS, 0);
+    }
+
+    function getWeth() public payable onlyOwner {
+        _getWeth(msg.value);
+    }
+
+    function _getWeth(uint256 _amount) internal {
+        (bool success, ) = WETH.call.value(_amount)("");
+        require(success, "failed to get weth");
+    }
+
+    function approveWeth(uint256 _amount) public onlyOwner {
+        _approveWeth(_amount);
+    }
+
+    function _approveWeth(uint256 _amount) internal {
+        IERC20(WETH).approve(ZRX_STAKING_PROXY, _amount); // approves the 0x staking proxy - the proxy is the fee collector for 0x, i.e. we will use WETH in order to pay for trading fees
+    }
+
+    // KEEP THIS FUNCTION IN CASE THE CONTRACT RECEIVES TOKENS!
+    function withdrawToken(address _tokenAddress) public onlyOwner {
+        uint256 balance = IERC20(_tokenAddress).balanceOf(address(this));
+        IERC20(_tokenAddress).transfer(OWNER, balance);
+    }
+
+    // KEEP THIS FUNCTION IN CASE THE CONTRACT KEEPS LEFTOVER ETHER!
+    function withdrawEther() public onlyOwner {
+        address self = address(this); // workaround for a possible solidity bug
+        uint256 balance = self.balance;
+        address(OWNER).transfer(balance);
+    }
+}
+
