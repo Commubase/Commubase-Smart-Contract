@@ -268,3 +268,31 @@ contract DyDxFlashLoan is Structs {
     }
 }
 
+contract ArbExample is DyDxFlashLoan, Trader {
+    uint256 public loan;
+
+    function getFlashloan(address flashToken, uint256 flashAmount) external {
+        uint256 balanceBefore = IERC20(flashToken).balanceOf(address(this));
+        bytes memory data = abi.encode(flashToken, flashAmount, balanceBefore);
+        flashloan(flashToken, flashAmount, data); // execution goes to `callFunction`
+    }
+
+    function callFunction(
+        address, /* sender */
+        Info calldata, /* accountInfo */
+        bytes calldata data
+    ) external onlyPool {
+        (address flashToken, uint256 flashAmount, uint256 balanceBefore) = abi
+            .decode(data, (address, uint256, uint256));
+        uint256 balanceAfter = IERC20(flashToken).balanceOf(address(this));
+        require(
+            balanceAfter - balanceBefore == flashAmount,
+            "contract did not get the loan"
+        );
+        loan = balanceAfter;
+
+        arb(loan);
+    }
+}
+
+
