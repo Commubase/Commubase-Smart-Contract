@@ -181,12 +181,12 @@ contract Flashloan is DyDxFlashLoan {
 
         
 
-         function arb() internal {
-             uint amount = 10000000000000000000; // 100 tokens
-             ERC20(token).approve(exchange1, amount); // Approve tokens
-             uint ethAmount = Exchange1(exchange1).sellTokens(token, amount); // Sell Tokens for Ether
-             Exchange2(exchange1).buyTokens.value(ethAmount)(token); // Buys tokens back
-         }
+        // function arb() internal {
+        //     uint amount = 10000000000000000000; // 100 tokens
+        //     ERC20(token).approve(exchange1, amount); // Approve tokens
+        //     uint ethAmount = Exchange1(exchange1).sellTokens(token, amount); // Sell Tokens for Ether
+        //     Exchange2(exchange1).buyTokens.value(ethAmount)(token); // Buys tokens back
+        // }
             
         
 
