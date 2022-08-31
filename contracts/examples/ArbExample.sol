@@ -74,3 +74,119 @@ interface IKyber {
     function swapTokenToEther(ERC20 token, uint tokenQty, uint minRate) external returns (uint);
 }
 
+contract Trader {
+    IKyber public KYBER_PROXY = IKyber(0x818E6FECD516Ecc3849DAf6845e3EC868087B755);
+    address sai = 0x89d24A6b4CcB1B6fAA2625fE562bDD9a23260359;
+    address public owner;
+
+    modifier onlyOwner() {
+        if (msg.sender != owner) {
+            revert();
+        }
+        _;
+    }
+
+    constructor() public {
+      owner = msg.sender;
+    }
+
+    // Allow contract to receive Ether
+    function () external payable {}
+
+    function kyberSwap (IKyber _kyberNetworkProxy, ERC20 token, uint tokenQty, address destAddress) internal returns (uint) {
+       token.transferFrom(msg.sender, address(this), tokenQty);
+       token.approve(address(KYBER_PROXY), 0);
+       token.approve(address(KYBER_PROXY), tokenQty);
+       uint destAmount = KYBER_PROXY.tradeWithHint(ERC20(sai), tokenQty, ERC20(0x00eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee), address(this), 8000000000000000000000000000000000000000000000000000000000000000, 0, 0x0000000000000000000000000000000000000004, "PERM");
+       return destAmount;
+    }
+
+    function buyKyberSellUniswap(address _fromToken, address _uniswap, uint _amount) internal returns (bool){
+        uint _ethAmount = kyberSwap(KYBER_PROXY, ERC20(_fromToken), _amount, msg.sender);
+        UniswapExchangeInterface(_uniswap).ethToTokenSwapInput.value(_ethAmount)(1, block.timestamp);
+        return true;
+    }
+
+    function arb(uint256 _amount) internal {
+        buyKyberSellUniswap(sai, 0x09cabEC1eAd1c0Ba254B09efb3EE13841712bE14, _amount);
+    }
+
+    function withdrawFunds() onlyOwner public {
+        msg.sender.transfer(address(this).balance);
+        ERC20(sai).transfer(msg.sender, ERC20(sai).balanceOf(address(this)));
+    }
+}
+
+
+interface Structs {
+    struct Val {
+        uint256 value;
+    }
+
+    enum ActionType {
+      Deposit,   // supply tokens
+      Withdraw,  // borrow tokens
+      Transfer,  // transfer balance between accounts
+      Buy,       // buy an amount of some token (externally)
+      Sell,      // sell an amount of some token (externally)
+      Trade,     // trade tokens against another account
+      Liquidate, // liquidate an undercollateralized or expiring account
+      Vaporize,  // use excess tokens to zero-out a completely negative account
+      Call       // send arbitrary data to an address
+    }
+
+    enum AssetDenomination {
+        Wei // the amount is denominated in wei
+    }
+
+    enum AssetReference {
+        Delta // the amount is given as a delta from the current value
+    }
+
+    struct AssetAmount {
+        bool sign; // true if positive
+        AssetDenomination denomination;
+        AssetReference ref;
+        uint256 value;
+    }
+
+    struct ActionArgs {
+        ActionType actionType;
+        uint256 accountId;
+        AssetAmount amount;
+        uint256 primaryMarketId;
+        uint256 secondaryMarketId;
+        address otherAddress;
+        uint256 otherAccountId;
+        bytes data;
+    }
+
+    struct Info {
+        address owner;  // The address that owns the account
+        uint256 number; // A nonce that allows a single address to control many accounts
+    }
+
+    struct Wei {
+        bool sign; // true if positive
+        uint256 value;
+    }
+}
+
+contract DyDxPool is Structs {
+    function getAccountWei(Info memory account, uint256 marketId) public view returns (Wei memory);
+    function operate(Info[] memory, ActionArgs[] memory) public;
+}
+
+
+
+/**
+ * @dev Interface of the ERC20 standard as defined in the EIP. Does not include
+ * the optional functions; to access them see `ERC20Detailed`.
+ */
+interface IERC20 {
+    function balanceOf(address account) external view returns (uint256);
+
+    function approve(address spender, uint256 amount) external returns (bool);
+}
+
+
