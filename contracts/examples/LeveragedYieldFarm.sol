@@ -252,6 +252,50 @@ contract LeveragedYieldFarm is DyDxFlashLoan  {
         uint256 balance = Erc20(_tokenAddress).balanceOf(address(this));
         Erc20(_tokenAddress).transfer(owner, balance);
     }
+// You must have some Dai in your contract still to pay flash loan fee!
+    // Always keep at least 1 DAI in the contract
+    function withdrawDai(uint256 initialAmount) external onlyOwner returns (bool){
+        // Total deposit: 30% initial amount, 70% flash loan
+        uint256 totalAmount = (initialAmount * 10) / 3;
+
+        // loan is 70% of total deposit
+        uint256 flashLoanAmount = totalAmount - initialAmount;
+
+        // Use flash loan to payback borrowed amount
+        bytes memory data = abi.encode(totalAmount, flashLoanAmount, WITHDRAW);
+        flashloan(daiAddress, flashLoanAmount, data); // execution goes to `callFunction`
+
+        // Handle repayment inside handleWithdraw() function
+
+        // Claim COMP tokens
+        comptroller.claimComp(address(this));
+
+        // Withdraw COMP tokens
+        compToken.transfer(owner, compToken.balanceOf(address(this)));
+
+        // Withdraw Dai to the wallet
+        dai.transfer(owner, dai.balanceOf(address(this)));
+
+        return true;
+    }
+
+
+    function callFunction(
+        address, /* sender */
+        Info calldata, /* accountInfo */
+        bytes calldata data
+    ) external onlyPool {
+        (uint256 totalAmount, uint256 flashLoanAmount, bytes32 operation) = abi
+            .decode(data, (uint256, uint256, bytes32));
+
+        if(operation == DEPOSIT) {
+            handleDeposit(totalAmount, flashLoanAmount);
+        }
+
+        if(operation == WITHDRAW) {
+            handleWithdraw();
+        }
+    }
 
 }
 
