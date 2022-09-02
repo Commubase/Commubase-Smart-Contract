@@ -176,4 +176,82 @@ contract DyDxFlashLoan is Structs {
         pool.operate(infos, args);
     }
 }
+contract LeveragedYieldFarm is DyDxFlashLoan  {
+    // Mainnet Dai
+    // https://etherscan.io/address/0x6b175474e89094c44da98b954eedeac495271d0f#readContract
+    address daiAddress = 0x6B175474E89094C44Da98b954EedeAC495271d0F;
+    Erc20 dai = Erc20(daiAddress);
+
+    // Mainnet cDai
+    // https://etherscan.io/address/0x5d3a536e4d6dbd6114cc1ead35777bab948e3643#readProxyContract
+    address cDaiAddress = 0x5d3a536E4D6DbD6114cc1Ead35777bAB948E3643;
+    CErc20 cDai = CErc20(cDaiAddress);
+
+    // Mainnet Comptroller
+    // https://etherscan.io/address/0x3d9819210a31b4961b30ef54be2aed79b9c9cd3b#readProxyContract
+    address comptrollerAddress = 0x3d9819210A31b4961b30EF54bE2aeD79B9c9Cd3B;
+    Comptroller comptroller = Comptroller(comptrollerAddress);
+
+    // COMP ERC-20 token
+    // https://etherscan.io/token/0xc00e94cb662c3520282e6f5717214004a7f26888
+    Erc20 compToken = Erc20(0xc00e94Cb662C3520282E6f5717214004A7f26888);
+
+    // Deposit/Withdraw values
+    bytes32 DEPOSIT = keccak256("DEPOSIT");
+    bytes32 WITHDRAW = keccak256("WITHDRAW");
+
+    // Contract owner
+    address payable owner;
+
+    event FlashLoan(address indexed _from, bytes32 indexed _id, uint _value);
+
+    // Modifiers
+    modifier onlyOwner() {
+        require(msg.sender == owner, "caller is not the owner!");
+        _;
+    }
+
+    // Don't allow contract to receive Ether by mistake
+    function() external payable {
+        revert();
+    }
+
+    constructor() public {
+        // Track the contract owner
+        owner = msg.sender;
+
+        // Enter the cDai market so you can borrow another type of asset
+        address[] memory cTokens = new address[](1);
+        cTokens[0] = cDaiAddress;
+        uint256[] memory errors = comptroller.enterMarkets(cTokens);
+        if (errors[0] != 0) {
+            revert("Comptroller.enterMarkets failed.");
+        }
+    }
+
+    // Do not deposit all your DAI because you must pay flash loan fees
+    // Always keep at least 1 DAI in the contract
+    function depositDai(uint256 initialAmount) external onlyOwner returns (bool){
+        // Total deposit: 30% initial amount, 70% flash loan
+        uint256 totalAmount = (initialAmount * 10) / 3;
+
+        // loan is 70% of total deposit
+        uint256 flashLoanAmount = totalAmount - initialAmount;
+
+        // Get DAI Flash Loan for "DEPOSIT"
+        bytes memory data = abi.encode(totalAmount, flashLoanAmount, DEPOSIT);
+        flashloan(daiAddress, flashLoanAmount, data); // execution goes to `callFunction`
+
+        // Handle remaining execution inside handleDeposit() function
+
+        return true;
+    }
+    
+    // Fallback in case any other tokens are sent to this contract
+    function withdrawToken(address _tokenAddress) public onlyOwner {
+        uint256 balance = Erc20(_tokenAddress).balanceOf(address(this));
+        Erc20(_tokenAddress).transfer(owner, balance);
+    }
+
+}
 
