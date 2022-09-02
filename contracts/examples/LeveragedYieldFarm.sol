@@ -88,3 +88,9 @@ contract DyDxPool is Structs {
     function getAccountWei(Info memory account, uint256 marketId) public view returns (Wei memory);
     function operate(Info[] memory, ActionArgs[] memory) public;
 }
+
+interface IERC20 {
+    function balanceOf(address account) external view returns (uint256);
+
+    function approve(address spender, uint256 amount) external returns (bool);
+}
