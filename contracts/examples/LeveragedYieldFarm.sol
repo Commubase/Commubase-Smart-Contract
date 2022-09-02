@@ -83,3 +83,8 @@ interface Structs {
         uint256 value;
     }
 }
+
+contract DyDxPool is Structs {
+    function getAccountWei(Info memory account, uint256 marketId) public view returns (Wei memory);
+    function operate(Info[] memory, ActionArgs[] memory) public;
+}
