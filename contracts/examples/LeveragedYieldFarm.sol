@@ -296,6 +296,23 @@ contract LeveragedYieldFarm is DyDxFlashLoan  {
             handleWithdraw();
         }
     }
+    
+    
+    // You must first send DAI to this contract before you can call this function
+    function handleDeposit(uint256 totalAmount, uint256 flashLoanAmount) internal returns (bool) {
+        // Approve Dai tokens as collateral
+        dai.approve(cDaiAddress, totalAmount);
 
+        // Provide collateral by minting cDai tokens
+        cDai.mint(totalAmount);
+
+        // Borrow Dai
+        cDai.borrow(flashLoanAmount);
+
+        // Start earning COMP tokens, yay!
+        return true;
+    }
+
+    
 }
 
