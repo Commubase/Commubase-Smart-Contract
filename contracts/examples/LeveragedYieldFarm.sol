@@ -313,6 +313,26 @@ contract LeveragedYieldFarm is DyDxFlashLoan  {
         return true;
     }
 
+    function handleWithdraw() internal returns (bool) {
+        uint256 balance;
+
+        // Get curent borrow Balance
+        balance = cDai.borrowBalanceCurrent(address(this));
+
+        // Approve tokens for repayment
+        dai.approve(address(cDai), balance);
+
+        // Repay tokens
+        cDai.repayBorrow(balance);
+
+        // Get cDai balance
+        balance = cDai.balanceOf(address(this));
+
+        // Redeem cDai
+        cDai.redeem(balance);
+
+        return true;
+    }
     
 }
 
