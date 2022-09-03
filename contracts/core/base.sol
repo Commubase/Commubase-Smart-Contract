@@ -108,6 +108,32 @@ contract codex {
             return "10 full-round actions";
         }
     }
+    function range(uint id) external pure returns (string memory description) {
+        if (id == 0) {
+            return "Personal";
+        } else if (id == 1) {
+            return "Touch";
+        } else if (id == 2) {
+            return "Close";
+        } else if (id == 3) {
+            return "Medium";
+        } else if (id == 4) {
+            return "Long";
+        } else if (id == 5) {
+            return "Unlimited";
+        }
+    }
+    function saving_throw_type(uint id) external pure returns (string memory description) {
+        if (id == 0) {
+            return "None";
+        } else if (id == 1) {
+            return "Fortitude";
+        } else if (id == 2) {
+            return "Reflex";
+        } else if (id == 3) {
+            return "Will";
+        }
+    }
     
     function saving_throw_effect(uint id) external pure returns (string memory description) {
         if (id == 0) {
