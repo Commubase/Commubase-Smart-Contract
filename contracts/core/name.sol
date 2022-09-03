@@ -1252,35 +1252,6 @@ contract rarity_names is ERC721Enumerable {
         emit NameUpdated(name_id, name, new_name);
     }
 
-    // @dev Check if the name string is valid (Alphanumeric and spaces without leading or trailing space)
-    function validate_name(string memory str) public pure returns (bool){
-        bytes memory b = bytes(str);
-        if(b.length < 1) return false;
-        if(b.length > 25) return false; // Cannot be longer than 25 characters
-        if(b[0] == 0x20) return false; // Leading space
-        if (b[b.length - 1] == 0x20) return false; // Trailing space
-
-        bytes1 last_char = b[0];
-
-        for(uint i; i<b.length; i++){
-            bytes1 char = b[i];
-
-            if (char == 0x20 && last_char == 0x20) return false; // Cannot contain continous spaces
-
-            if(
-                !(char >= 0x30 && char <= 0x39) && //9-0
-            !(char >= 0x41 && char <= 0x5A) && //A-Z
-            !(char >= 0x61 && char <= 0x7A) && //a-z
-            !(char == 0x20) //space
-            )
-                return false;
-
-            last_char = char;
-        }
-
-        return true;
-    }
-
     // @dev Converts the string to lowercase
     function to_lower(string memory str) public pure returns (string memory){
         bytes memory b_str = bytes(str);
